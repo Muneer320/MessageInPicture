@@ -2,82 +2,109 @@
 
 # MessageInPicture
 
-**Write text into the pixels of an image, then read it back out.**
+**Turn a text message into black-and-white pixels—and read it back.**
 
-Every character becomes 8 bits, every bit becomes one pixel: black for `0`, white for `1`. The result is a lossless PNG that *is* the message rather than a picture hiding one.
+A small experiment in seeing text as data: UTF-8 bytes become a PNG, one bit per pixel.
 
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
-![OpenCV](https://img.shields.io/badge/OpenCV-5C3EE8?style=flat-square&logo=opencv&logoColor=white)
-![NumPy](https://img.shields.io/badge/NumPy-013243?style=flat-square&logo=numpy&logoColor=white)
+[![Python](https://img.shields.io/badge/Python-experiment-3776AB?logo=python&logoColor=white)](binToImage.py) [![OpenCV](https://img.shields.io/badge/OpenCV-image_I%2FO-5C3EE8?logo=opencv&logoColor=white)](requirements.txt) [![NumPy](https://img.shields.io/badge/NumPy-bit_grid-013243?logo=numpy&logoColor=white)](requirements.txt)
+
+[**Try a round trip**](#try-a-round-trip) · [**Read the pixels**](#from-characters-to-pixels) · [**Limits**](#what-the-format-does-and-doesnt-preserve)
 
 </div>
 
----
+## The picture is the message
 
-## How it works
+Images and text are both bytes, but they are usually treated as different kinds of files. This experiment makes that relationship visible: turn each UTF-8 byte into eight black/white pixels, arrange them into a near-square grid, and reverse the process to recover the text.
 
-```
-"Hi"  ->  01001000 01101001         text to UTF-8 bytes to bits
-      ->  [0,1,0,0,1,0,0,0,...]     flat bit array
-      ->  reshaped to ~sqrt(n) rows  squarest grid that fits
-      ->  x255                       1 becomes white, 0 stays black
-      ->  binary_image.png           PNG, compression level 0
-```
+| Message | Actual encoded PNG | Decoded output |
+| --- | :---: | --- |
+| `café ✓ नमस्ते` | <img src="docs/images/message.png" width="150" alt="Actual black-and-white bit grid encoding the Unicode example"> | `café ✓ नमस्ते` |
 
-Decoding runs the same path backwards: read greyscale, threshold at 127, flatten, regroup into bytes, decode UTF-8.
+*The original PNG is tiny and enlarged here for display. Download [the original file](docs/images/message.png) to decode it; a screenshot or resized copy changes its pixel data.*
 
-Unused cells in the last row are filled with `0` bits. They decode to NUL bytes, which are stripped, so any text round-trips exactly. That includes non-ASCII text such as `café ✓ नमस्ते`.
+> [!NOTE]
+> **This is encoding, not encryption or steganography.** There is no cover image, secret key or hidden payload. Anyone with the decoding procedure can read the message. It is an early learning experiment, not a secure messaging format.
 
-The grid is sized to `rows = floor(sqrt(bits))`, so the image comes out roughly square regardless of message length.
+## Try a round trip
 
----
+Use Git and Python; Python 3.13 is the verified environment. OpenCV and NumPy run locally, with no API key or external service.
 
-## Two things that matter
-
-**Compression must be off.** The PNG is written with `IMWRITE_PNG_COMPRESSION = 0`. Every pixel carries one bit, so a lossy or resampling step does not soften the image, it corrupts the payload.
-
-**This is encoding, not steganography.** There is no cover image and nothing is hidden. Anyone looking at the file sees noise and can decode it with the same script. It is a visual representation of bytes, not a way to conceal them.
-
----
-
-## Usage
-
-```bash
-pip install -r requirements.txt
-python binToImage.py
+```sh
+git clone https://github.com/Muneer320/MessageInPicture.git
+cd MessageInPicture
+python -m pip install -r requirements.txt
 ```
 
-You get a prompt:
+Run this Python example from the repository root:
 
-```
-What would you like to do:
-i)  Convert text to Image
-ii) Convert Image to Text
-```
+```python
+from binToImage import binToImg, imgToText
 
-`convert_words.py` is the batch path:
-
-```bash
-python convert_words.py binary_image.png      # decode a PNG and report the character count
-python convert_words.py --encode-wordlist     # encode the 4MB words_alpha.txt into wordlist.png
+message = "café ✓ नमस्ते"
+binToImg(message, "message.png")
+decoded = imgToText("message.png")
+print(decoded)
+assert decoded == message
 ```
 
-The word list makes a large, dense test image.
+Expected output:
 
-Tests: `pip install pytest && python -m pytest tests`.
+```text
+café ✓ नमस्ते
+```
 
----
+For prompts instead of imports, run `python binToImage.py`, then choose `i` to encode or `ii` to decode. Finish multiline input with Ctrl+Z then Enter on Windows or Ctrl+D on macOS/Linux. The default output is `binary_image.png`.
 
-## Files
+## From characters to pixels
 
-| File | Purpose |
-|---|---|
-| `binToImage.py` | `binToImg`, `imgToBin`, `binToStr`, plus the interactive menu |
-| `convert_words.py` | Decode a PNG to text, or encode the wordlist |
-| `tests/` | Round-trip tests (ASCII, multi-line, non-ASCII, long text, bad input) |
-| `words_alpha.txt` | ~370k English words, used as a bulk test payload |
-| `binary_image.png` | Sample output |
+```mermaid
+flowchart LR
+    Text[Text] --> UTF[UTF-8 bytes]
+    UTF --> Bits[Eight bits per byte]
+    Bits --> Grid[Near-square grid with zero padding]
+    Grid --> PNG[Black and white PNG]
+    PNG --> Threshold[Threshold pixels and flatten]
+    Threshold --> Bytes[Regroup complete bytes]
+    Bytes --> Decode[Strip trailing NULs and decode UTF-8]
+```
 
----
+Black represents `0`; white represents `1`. Encoding uses `floor(sqrt(bit_count))` rows and enough columns to fit the payload. Decoding thresholds grayscale values at 127, reads row by row and regroups bits into bytes.
 
-<sub>An early experiment. Kept for the idea rather than the code.</sub>
+## What the format does and doesn't preserve
+
+| Works | Boundary |
+| --- | --- |
+| Ordinary UTF-8 text, including multiline and non-ASCII messages | Trailing NUL characters are removed with padding; arbitrary byte payloads are not preserved |
+| Lossless PNG pixels | Resizing, cropping, threshold changes or lossy conversion can corrupt the data |
+| A simple encode/decode experiment | No length header, checksum, encryption or authenticity check |
+
+The writer uses PNG compression level 0. PNG's lossless compression itself does not corrupt the payload; preserving the exact pixels matters. Empty messages are rejected. A wrong/corrupted image may fail UTF-8 decoding or produce unrelated valid text. Large messages allocate the bit string and pixel array in memory.
+
+<details>
+<summary><strong>Batch decoding and the bundled word-list experiment</strong></summary>
+
+```sh
+python convert_words.py docs/images/message.png
+python convert_words.py --encode-wordlist
+```
+
+The first command prints decoded text and its character count. The second encodes the bundled `words_alpha.txt` to `wordlist.png`; it is a bulk experiment and can use substantially more memory. Run these from the repository root so the relative word-list path resolves.
+
+</details>
+
+## Tests and source map
+
+```sh
+python -m pip install pytest
+python -m pytest tests
+```
+
+| File | Role |
+| --- | --- |
+| [binToImage.py](binToImage.py) | Encoding, bit extraction, UTF-8 decoding and interactive menu |
+| [convert_words.py](convert_words.py) | Batch decode or bundled word-list encode |
+| [tests/](tests/) | ASCII/multiline/Unicode/long-input round trips and invalid inputs |
+
+For a bug, include a small synthetic input and reproduction in [Issues](https://github.com/Muneer320/MessageInPicture/issues). For a focused PR, run the tests and check padding/Unicode behavior; never attach private messages assuming the encoding conceals them.
+
+An early experiment by [Muneer Alam](https://github.com/Muneer320), retained for the idea and the lessons. The repository does not currently include a license file.
