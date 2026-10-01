@@ -17,7 +17,7 @@ Every character becomes 8 bits, every bit becomes one pixel: black for `0`, whit
 ## How it works
 
 ```
-"Hi"  ->  01001000 01101001         text to bits (8 per character)
+"Hi"  ->  01001000 01101001         text to UTF-8 bytes to bits
       ->  [0,1,0,0,1,0,0,0,...]     flat bit array
       ->  reshaped to ~sqrt(n) rows  squarest grid that fits
       ->  x255                       1 becomes white, 0 stays black
@@ -25,6 +25,8 @@ Every character becomes 8 bits, every bit becomes one pixel: black for `0`, whit
 ```
 
 Decoding runs the same path backwards: read greyscale, threshold at 127, flatten, regroup into bytes, decode UTF-8.
+
+Unused cells in the last row are filled with `0` bits. They decode to NUL bytes, which are stripped, so any text round-trips exactly. That includes non-ASCII text such as `café ✓ नमस्ते`.
 
 The grid is sized to `rows = floor(sqrt(bits))`, so the image comes out roughly square regardless of message length.
 
@@ -41,7 +43,7 @@ The grid is sized to `rows = floor(sqrt(bits))`, so the image comes out roughly 
 ## Usage
 
 ```bash
-pip install opencv-python numpy
+pip install -r requirements.txt
 python binToImage.py
 ```
 
@@ -53,7 +55,16 @@ i)  Convert text to Image
 ii) Convert Image to Text
 ```
 
-`convert_words.py` is the batch path: point it at a PNG and it decodes and reports the character count. The commented block at the top encodes `words_alpha.txt` instead, which is what the 4MB English wordlist in this repo is for. It makes a large, dense test image.
+`convert_words.py` is the batch path:
+
+```bash
+python convert_words.py binary_image.png      # decode a PNG and report the character count
+python convert_words.py --encode-wordlist     # encode the 4MB words_alpha.txt into wordlist.png
+```
+
+The word list makes a large, dense test image.
+
+Tests: `pip install pytest && python -m pytest tests`.
 
 ---
 
@@ -63,6 +74,7 @@ ii) Convert Image to Text
 |---|---|
 | `binToImage.py` | `binToImg`, `imgToBin`, `binToStr`, plus the interactive menu |
 | `convert_words.py` | Decode a PNG to text, or encode the wordlist |
+| `tests/` | Round-trip tests (ASCII, multi-line, non-ASCII, long text, bad input) |
 | `words_alpha.txt` | ~370k English words, used as a bulk test payload |
 | `binary_image.png` | Sample output |
 
